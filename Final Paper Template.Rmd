@@ -1,0 +1,354 @@
+---
+title: "Final Paper"
+author: "STOR 320.02 Group 18"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(kableExtra)
+require(gridExtra)
+library(leaps)
+library(MASS)
+library(broom)
+library(purrr)
+library(modelr)
+```
+
+### INTRODUCTION
+
+The NCAA and the NBA have been a source of entertainment for millions of people across the past several decades, and have boasted countless displays of brilliance from some of the world’s greatest athletes. Basketball players from the NCAA dream of transitioning their career into the NBA, and for several players, this dream ultimately becomes their reality. In the field of sports, lots of data is collected for each player, and this data is often scrutinized and examined heavily by organizations to decide whether the player is worth the investment. Our group is interested in analyzing data from basketball players in the NCAA, and seeing how we can use this data to predict their success in the NBA. Our dataset shows a variety of statistics for players that played in both the NCAA and the NBA, and our initial exploration of the data revealed that there may be several variables that have an impact on a player's NBA success. This exploration helped us decide what factors of success in the NBA are most important to predict for players, managers, organizations, and fans alike. Our two questions are as follows:
+
+**Question 1**: What NCAA statistics and which combination of NCAA statistics are the best predictors for career length in the NBA? 
+
+**Question 2**: What NCAA statistics and which combination of NCAA statistics are the best predictors for three-point percentage in the NBA?
+
+A big talking-point for sports in the modern era is envisioning the longevity and advancements of young players in their future. Sports fans enjoy seeing young players perform at high levels, and want to see them succeed at the professional level. An analysis of our first question will provide fans with the ability to see how likely it is for players to have a lengthy professional career, or how likely it is that a player does not make an ascendancy into the NBA. The information determined from the first question is also of great importance to players and organizations from both the NCAA and the NBA. NBA organizations want to draft players that will help them make the most money, and this information would help give them a sense of how long their player of interest could potentially play in the NBA. NCAA basketball players could use this information to see where they need to improve to increase their chances of having a successful NBA career. 
+
+Over the past few decades, the three-point shot has become a crucial element to the game. More three-pointers are being attempted and scored every year, and the range from which players attempt these shots has also drastically increased. An analysis of our second question will provide useful information to NBA organizations similarly to the first question. Because the game of basketball has changed with regards to three-point shooting, players who are predicted to have a higher three-point success percentage will be very valuable to NBA organizations. 
+
+Following the exploration of these two questions, sports fans and NBA teams will understand how a player’s NCAA performance can serve as an indication of a player’s potential performance in the NBA. 
+
+
+### DATA
+
+The dataset that we chose to use is a combination of two datasets from professional and reliable sports reference websites. The first dataset pulls a list of NBA game statistics from www.basketball-reference.com for every player that has played a game since the league’s creation in 1947. Then, using a join function, an NCAA dataset containing college game statistics on every Division 1 player since 1947, found on www.sports-reference.com/cbb, is added to the NBA dataset.
+
+The information is joined to the NBA player’s name, causing all NCAA Division 1 players who never played in the NBA to be deleted from the final dataset. As a result, since some NBA players did not attend college, the final dataset only shows their NBA statistics, without any NCAA statistics. Since our questions focus on predicting NBA longevity and three-point percentage based on NCAA performance, we chose to ignore these players in our analysis.
+
+In total, there are 4,576 players in our dataset. The following table is a representation of a few of the most significant variables in our dataset:  
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE}
+players <- read.csv("https://query.data.world/s/u3vjnp3yoe2rdhnqglnk52or6r4qn5", header=TRUE, stringsAsFactors=FALSE);
+players <- players[, -1]
+playerstable = players[,c(6,11,20,21,23,32,33)] %>%
+  rename("Player Name" = "name", "NBA 3-Pt %" = "NBA__3ptpct", "NBA Games" = "NBA_g_played", "NBA PPG" = "NBA_ppg", "NCAA 3-Pt %" = "NCAA__3ptpct", "NCAA Games" = "NCAA_games", "NCAA PPG" = "NCAA_ppg")
+playerstable2 = head(playerstable[67:72,])
+kable(playerstable2, align = "lcccccc") %>%
+  kable_material_dark("hover")
+```
+
+The main variables in the dataset relate to the individual statistics of each player’s performance at the collegiate and professional level. For NBA statistics, there are records of each players’ career games played, years in the league, field goal percentage, points per game, and 3-point percentage. For NCAA statistics, there are records of each players’ collegiate games played, field goal percentage, points per game, 3-point percentage, 3-pointers scored per game, and free throw percentage. Since the 3-point line was implemented in 1979 for the NBA and 1987 for the NCAA, all players who played before those years in their respective leagues do not have available statistics for 3-pointers ([Source](https://www.usab.com/youth/news/2011/06/the-history-of-the-3-pointer.aspx)).
+ 
+In order to improve the accuracy of our analysis, we made several changes to the data provided in our dataset. We created a variable for career length which took the difference between the years the players were active, and created a variable that categorized the years the players played into decades (80s, 90s, etc.). We also removed all current players so as to examine the careers of retired players, allowing us to make relationships that dealt with the statistics of players across a whole career, rather than ones that were yet to finish. We removed players from the dataset who had a 3-point percentage of 0 in the NBA, as well players who shot less than 0.2 threes per game in the NCAA. NCAA and NBA players whose 3-point shooting percentages were outside of the range of 1% to 60% were also removed. In order to predict the career length of NBA players based upon their NCAA statistics, we had to determine which NCAA statistics were significant from the dataset and the metrics that our group would use to evaluate the length of a player's career. The two metrics used in the analysis of a NBA player’s career length were both the number of games played by the player in the league, as well as the number of years that the player played. Our group made numerous models to predict both the player’s number of games played in the NBA and their career length. By evaluating career length based upon two metrics, our analysis was able to calculate two predictors of a player’s career longevity that would be relevant to NBA organizations and fans. 
+
+ 
+The following figure displays the average NBA points per game from players in our dataset sorted by the number of years they played in the NBA:
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE}
+
+NBACareerLengthplayers <- mutate(players, Length_of_Career = active_to - active_from) %>%
+  filter(Length_of_Career > 0) %>%
+  filter(Length_of_Career < 10 ) %>%
+  rename("Career_Length" = "Length_of_Career")
+ggplot(NBACareerLengthplayers,aes(x=NBA_ppg)) +
+  geom_histogram(color="black",fill="blue") +
+  facet_wrap(~Career_Length, labeller = labeller(Career_Length =
+                                                   c("1" = "1 Year in NBA",
+                                                     "2" = "2 Years in NBA",
+                                                     "3" = "3 Years in NBA",
+                                                     "4" = "4 Years in NBA",
+                                                     "5" = "5 Years in NBA",
+                                                     "6" = "6 Years in NBA",
+                                                     "7" = "7 Years in NBA",
+                                                     "8" = "8 Years in NBA",
+                                                     "9" = "9 Years in NBA"))) +
+  xlab("NBA PPG") +
+  ylab("Count") 
+```
+
+As seen here, there are fewer players with a longer career length in the NBA. In addition, the distribution becomes less right skewed as players’ careers are longer. As we dive into our analysis, we will seek out NCAA statistics that cause a similar relationship in NBA longevity and 3-point success.
+ 
+
+### RESULTS
+
+**Question 1: Predicting NBA Career Length**
+
+The first model that we created was a multiple linear regression model that predicted NBA career length in years, utilizing all of the NCAA statistics provided in the dataset. Next, using stepwise selection, this model was reduced to include the most significant predictors of career length. However, this model resulted in a large RMSE value of 4.5 years, and was thus not useful for analyzing the relationship between NCAA stats and an NBA player’s career length. Thereafter, two additional multiple linear regression models were created that evaluated a player's NBA career longevity based upon if they shot 3-point shots in college. Following this filter, the two data frames were combined. For the next multiple linear regression model, we aimed to predict total NBA games played for college players based on the same NCAA basketball statistics used in the first model. By assessing a player’s career length based on the number of games they played, factors such as injuries and player load management in the NBA were controlled. Originally, all of the major NCAA statistics in our dataset were accounted for in our full model. Furthermore, the log of NBA games played was used in order to fit the data better and control for the extreme variance in games played among retired NBA players. After running the full model, we found several predictor variables with large p-values that needed to be removed. This was partly due to 1) the skew of NBA games played by NBA players who mostly had careers shorter than 100 NBA games and 2) because of the pure unpredictability of players with prominent NCAA statistics having successful, lengthy professional NBA careers. The skew of the data can be viewed in the figure we created called, “Original Model”.  We refined this original model to reflect the variables with statistically significant p-values at a 5% significance level and named it “Refined Model”. Although this model also accounts for outliers in our predictor variables and the large variance of NBA games played, the model failed to accurately predict a given player’s NBA career. Next, ten-fold cross validation and stepwise models were constructed to compare the RMSE for different methods and variables. 
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+
+
+
+library(tidyverse)
+
+
+players1 <- players[, -1]
+
+college.players <- players1 %>% filter(!is.na(NCAA_games)) %>% rename(NBA_Games = NBA_g_played)
+
+active.players <- players1 %>%
+  filter(active_to == 2018) %>% filter(!is.na(NCAA_games))
+retired.players <- players %>%
+  filter(active_to != 2018) %>% filter(!is.na(NCAA_games))
+
+retired.players = retired.players %>% rename(NBA_Games = NBA_g_played)
+
+active.players = active.players %>% rename(NBA_Games = NBA_g_played)
+
+
+
+retired.ncaa.stats.3pt <- retired.players %>%
+  filter(!is.na(NCAA__3ptpct))
+
+
+NBA_GAMES = retired.ncaa.stats.3pt$NBA_Games
+
+
+PPG = retired.ncaa.stats.3pt$NCAA_ppg 
+COLLEGE_GAMES = retired.ncaa.stats.3pt$NCAA_games
+FGPG = retired.ncaa.stats.3pt$NCAA_fgpg
+FGPCT = retired.ncaa.stats.3pt$NCAA_fgpct
+THREEPTPG = retired.ncaa.stats.3pt$NCAA__3ptpg
+FTPG = retired.ncaa.stats.3pt$NCAA_ftpg
+FTAPG = retired.ncaa.stats.3pt$NCAA_ftapg
+THREEPTPCT = retired.ncaa.stats.3pt$NCAA__3ptpct
+
+
+retired.ncaa.stats.3pt2 <- retired.ncaa.stats.3pt %>%
+  filter(NCAA__3ptpg > 0.2) %>% filter(between(NCAA__3ptpct, 0.01, 0.7)) %>% mutate(NBA_Games_log = log(NBA_Games))
+
+NBA_GAMES_LOG = retired.ncaa.stats.3pt2$NBA_Games_log
+
+PPG = retired.ncaa.stats.3pt$NCAA_ppg
+COLLEGE_GAMES = retired.ncaa.stats.3pt$NCAA_games
+FGPG = retired.ncaa.stats.3pt$NCAA_fgpg
+FGPCT = retired.ncaa.stats.3pt$NCAA_fgpct
+THREEPTPG = retired.ncaa.stats.3pt$NCAA__3ptpg
+FTPG = retired.ncaa.stats.3pt$NCAA_ftpg
+FTAPG = retired.ncaa.stats.3pt$NCAA_ftapg
+THREEPTPCT = retired.ncaa.stats.3pt$NCAA__3ptpct
+
+
+
+ Percent.Data = retired.ncaa.stats.3pt %>% mutate(percent_model=predict(lm(NBA_GAMES~ + FGPG + FGPCT + THREEPTPG + FTPG + THREEPTPCT, data=retired.ncaa.stats.3pt)),percent_resid = residuals(lm(NBA_GAMES~PPG + FGPG + FGPCT + THREEPTPG + FTPG + THREEPTPCT, data=retired.ncaa.stats.3pt)))
+  
+plot7 = ggplot(Percent.Data) + geom_point(aes(x = NBA_GAMES, y = percent_model),  color = "blue", alpha = .77, stroke = 0) + xlab("Actual Games Played")+ylab("Predicted Games Played") + geom_abline(intercept = 0,slope = 1, color = "black") + ggtitle("Original Model")
+
+
+PPG1 = retired.ncaa.stats.3pt2$NCAA_ppg
+COLLEGE_GAMES1 = retired.ncaa.stats.3pt2$NCAA_games
+FGPG1 = retired.ncaa.stats.3pt2$NCAA_fgpg
+FGPCT1 = retired.ncaa.stats.3pt2$NCAA_fgpct
+THREEPTPG1 = retired.ncaa.stats.3pt2$NCAA__3ptpg
+FTPG1 = retired.ncaa.stats.3pt2$NCAA_ftpg
+FTAPG1 = retired.ncaa.stats.3pt2$NCAA_ftapg
+THREEPTPCT1 = retired.ncaa.stats.3pt2$NCAA__3ptpct
+
+full.lm3 = lm(NBA_GAMES_LOG ~ PPG1 + COLLEGE_GAMES1 + FGPG1 + FGPCT1 + THREEPTPG1 + FTPG1 + FTAPG1 + THREEPTPCT1, data = retired.ncaa.stats.3pt2)
+
+
+new.lm2 = lm(NBA_GAMES_LOG ~ COLLEGE_GAMES1 + FGPCT1 + THREEPTPCT1, data = retired.ncaa.stats.3pt2)
+
+ Percent.Data3 = retired.ncaa.stats.3pt2 %>% mutate(percent_model=predict(lm(NBA_GAMES_LOG~COLLEGE_GAMES1 + FGPCT1 + THREEPTPCT1, data=retired.ncaa.stats.3pt2)),percent_resid = residuals(lm(NBA_GAMES_LOG~COLLEGE_GAMES1 + FGPG1 + FGPCT1, data=retired.ncaa.stats.3pt2)))
+ 
+plot8 = ggplot(Percent.Data3) + geom_point(aes(x = NBA_GAMES_LOG, y = percent_model),  color = "blue", alpha = .77, stroke = 0) + xlab("Log of Actual Games Played")+ylab("Predicted Games Played") + ggtitle("Refined Model") 
+
+grid.arrange(plot7, plot8, ncol=2)
+
+
+```
+
+**Predicting the Number of Games Played by NBA Players Using Cross Validation and Stepwise Selection**
+
+To predict the number of NBA games played, linear and logistic models were constructed. The variable of NBA games played was regressed upon all of the NCAA statistics provided in the dataset. After constructing these models we used cross validation, which is constructed by creating “test” and “train” datasets. The test set is assigned specific values from the dataset, and the train set creates a model. The model (train set) is then applied to the values (test set) to produce predicted values, which is then compared with the actual values of the dataset. The final RMSE output from the CV model is based upon the test set. After adding the cross validation component to the model, a stepwise model was also implemented, iteratively evaluating the variables to determine which were significant enough to include in the model. The initial cross validated model used all of the NCAA statistics provided in the dataset to predict both NBA games played and the log of NBA games played. This model did not find a significant relationship, with rather large RMSE values of 309.5612 for the linear model and 531.0799 for the logistic model. After this model failed to be a good predictor of NBA games played, our group created additional models with a variety of variable combinations. A simple linear multiple regression model was run for NBA games played, finding that the variables NCAA games played, NCAA field goals attempted per game, NCAA 3-point percentage, and NCAA free throws per game were significant, with the most significant variable being NCAA field goals per game with a p-value of 0.00005174922.  Other statistically significant variables include NCAA 3-point percentage (p-value of 0.00170526958), NCAA free throws per game (p-value of 0.00680255780), NCAA field goals attempted per game(p-value of 0.01701779163), and NCAA games played (p-value of 0.03172807383). Our following cross validated, stepwise models used a variety of combinations of the four statistically significant variables in addition to NCAA points per game. When these four variables (NCAA games played, NCAA field goals attempted per game, NCAA 3-point percentage, NCAA free throws) were included, and NCAA points per game was not, the linear model had a smaller RMSE value of 309.2367, while the logistic model RMSE slightly increased to 531.1. This showed that a few of the NCAA statistics previously provided were not relevant in calculating NBA career length. The next CV model was run using both NCAA free throws per game and NCAA points per game, decreasing the linear RMSE to 304.6664 and the log to 531.0853. This demonstrated that NCAA points per game improved our model, but was still not significant enough to accurately predict NBA games played. Finally, the model with the lowest RMSE included the variables NCAA free throws per game, NCAA points per game, NCAA field goals per game, NCAA 3-point percentage, NCAA points per game, and NCAA field goal attempts per game. The RMSE values were 302.8918 for the linear model and 531.0806 for the logistic model, showing that even variables with insignificant p-values from the linear multiple regression model made an impact on our modeling of predicted games played. To evaluate the other metric, which is career length, an additional set of cross validated linear models was run using the most significant NCAA statistics from the multiple linear regression model. The RMSE was determined to be 4.094 with the variables NCAA games played, NCAA field goals per game, NCAA 3 point percentage, and NCAA free throws per game. When all of the NCAA statistics were included in the model, the resulting RMSE value was 4.06428. The better model in predicting the metric of career length was the model that included all of the NCAA statistics, showing a majority of the data was relevant to predicting a player’s career length. In summation, the fit of the model to the data was not ideal, and it can be concluded that the number of games played by NBA players can not be accurately predicted by the players’ NCAA statistics.  
+
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE}
+RMSE.func = function(actual, predict){
+  mse = mean((actual-predict)^2, na.rm = T)
+            rmse = sqrt(mse)
+            return(rmse)
+}
+
+#RMSE.func(actual=x,predict=y)
+
+players = players %>%
+  mutate(career_length = (active_to-active_from)) %>%
+  mutate(career_length_log = log(career_length))
+NCAAstat <- players[c(11:34)] 
+NCAAstat <- players[c(20, 22:33)] 
+NCAAstat <- players[-c(5)]
+NCAAstat.clean = NCAAstat %>%
+  filter(!is.na(NCAA__3ptpct))
+
+DATANCAATT = NCAAstat.clean %>%
+  crossv_kfold(10) 
+
+train.model.func = function(NCAAstat.clean){
+mod.NCAA.stat = lm(NBA_g_played ~  NCAA_games + NCAA_fgpg + NCAA__3ptpct + NCAA_ftpg + NCAA_fgapg + NCAA_ppg, data = NCAAstat)
+step.mod = stepAIC(mod.NCAA.stat, direction = "both", trace=FALSE)
+return(step.mod)
+}
+
+#NCAA__3ptapg + NCAA_3ptpct + NCAA__3ptpg + NCAA_efgpct + NCAA_fgapg + NCAA_fgpct + NCAA_fgpg + NCAA_ft + NCAA_ftapg + NCAA_ftpg + NCAA_games
+
+DATANCAA1 = DATANCAATT %>%
+mutate(ncaamodel1 = map(train, train.model.func))
+
+DATANCAA1.PREDICT = DATANCAA1 %>%
+    mutate(predict = map2(test, ncaamodel1, ~augment(.y,newdata=.x))) 
+    DATANCAA2.PREDICT = DATANCAA1.PREDICT[,5] %>%
+    unnest(cols = c(predict)) 
+
+
+OUT.RMSE = RMSE.func(actual = DATANCAA2.PREDICT$NBA_g_played, predict = DATANCAA2.PREDICT$.fitted )
+
+
+
+ggplot(DATANCAA2.PREDICT) +
+  geom_point(aes(x = NBA_g_played, y = .fitted, color = position)) +
+  geom_abline(slope = 1, intercept = 0) +
+  facet_wrap(vars(position)) +
+  xlab("Actual NBA Games Played (Linear)") +
+  ylab("Predicted NBA Games Played")
+
+
+```
+
+Next, two histograms were made to show the distributions of both the actual NBA games played for retired players alongside the predicted NBA games played by the previously made model. The resulting distributions show that the predictive model creates a much more normalized distribution with a mean centered around 225 games played. However, the actual distribution has the vast majority of players with less than 100 games played skewed towards the players with longer careers. The skew of the original dataset caused our model to overpredict the number of games NBA players would play.
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+plot1 = ggplot(DATANCAA2.PREDICT) +
+  geom_histogram(aes(x=.fitted, fill = NBA_g_played), fill = "blue") +
+  xlab("Predicted NBA Games Played (Linear)")  +
+  ylab("Frequency")
+plot2 = ggplot(DATANCAA2.PREDICT) +
+  geom_histogram(aes(x= NBA_g_played), add=T, fill = "red") +
+  xlab("Actual NBA Games Played (Linear)") +
+  ylab("Frequency")
+grid.arrange(plot1, plot2, ncol=2)
+
+```
+
+**Question 2: Predicting NBA 3pt Percentage**
+To predict NBA 3-point percentage, our group used the same processes that were described above for the first question, to examine which NCAA variables have the greatest impact on 3-point percentage in the NBA. In order to complete this analysis, we first had to determine which variables had higher significance values compared to others. We ran a multiple linear regression with a combination of NCAA statistics that we conceived to potentially have a large impact on a player’s NBA 3-point percentage. For the multiple linear regression, we selected the variables NCAA points per game, NCAA games played, NCAA field goals per game, NCAA field goal percentage, NCAA 3-pointers per game, NCAA free throws per game, NCAA free throws attempted per game, and NCAA 3-point percentage. After running the multiple linear regression, we found that NCAA free throws attempted per game had the lowest p-value, followed by NCAA games played, NCAA points per game, NCAA field goals per game and NCAA 3-point percentage. Now having gauged the significance values yielded from our linear regression, we used cross validation techniques across 10 different models with varying combinations of NCAA variables to examine the lowest RMSE values produced by the train and test sets. 
+
+There were 5 models made attempting to predict the log of NBA 3-point percentage, and 5 models attempting to predict pure NBA 3-point percentage. We regressed the 5 models on the log of the NBA 3-point percentage variable as we felt that taking the log of a variable that consisted of percentage data points, with values between 0 and 1, would produce a more accurate representation of the relationships. After running the 10 different models, the lowest RMSE value of the test set was computed using the pure NBA 3-point percentage and produced a value of 0.0601815, indicating that the model’s combination of NCAA variables is an accurate predictor of a player’s NBA 3-point percentage. The NCAA variables in this model are NCAA free throws, NCAA points per game, NCAA 3-pointers attempted per game, NCAA field goal percentage, NCAA field goals per game, NCAA 3-point percentage, NCAA 3-pointers made per game, NCAA field goals attempted per game, NCAA free throws attempted per game, NCAA free throws made per game, and NCAA games played. 
+
+We decided to examine our findings further by seeing how this relationship changes based on the decade in the NBA, as well as the positions played. In examining this figure, we find that there is more volume of 3-point shooting in the NBA in the 90s and 00s, with the low number of volume in the 10s being a result of us only using data for retired NBA players. It appears as if the data surrounds the regression line more accurately with each decade passing, indicating that a player’s NCAA stats are becoming more accurate at predicting a player’s NBA 3-point percentage in each passing decade. We also find that guards, forwards, and combinations of those two positions are shooting the greatest volume of 3-pointers, which is as expected. For all the decades in the figure, it is shown that a majority of the players are shooting 3-pointers in the accuracy range of 30%-40%, indicating that the accuracy of 3-point shooting in the NBA hasn’t necessarily changed. Overall, our findings suggest that NBA 3-point shooting percentage can be fairly accurately predicted by the model we created. 
+ 
+
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+RMSE.func = function(actual, predict){
+  mse = mean((actual-predict)^2, na.rm = T)
+            rmse = sqrt(mse)
+            return(rmse)
+}
+
+
+retired.players1 = players %>%
+  mutate(career_length = (active_to-active_from)) %>%
+  mutate(career_length_log = log(career_length)) %>%
+  mutate(NBA_3pt_log= log(NBA__3ptpct)) %>%
+  mutate(NBA_era=NA) %>%
+  filter(!is.na(NBA__3ptpct)) %>%
+  filter(NBA__3ptpct>0) %>%
+  filter(active_to != 2018) %>%
+  filter(!is.na(NCAA__3ptapg)) %>%
+  filter(!is.na(NCAA__3ptpct)) %>%
+  filter(!is.na(NCAA__3ptpg)) %>%
+  filter(!is.na(NCAA_fgpct)) %>%
+  filter(!is.na(NCAA_fgpg)) %>%
+  filter(!is.na(NCAA__3ptpg)) %>%
+  filter(!is.na(NCAA_fgapg)) %>%
+  filter(!is.na(NCAA_ftapg)) %>%
+  filter(!is.na(NCAA_ftpg)) %>%
+  filter(!is.na(NCAA_games)) %>%
+  filter(NCAA__3ptpg > 0.2) %>% 
+  filter(between(NCAA__3ptpct, 0.01, 0.59)) %>%
+  filter(between(NBA__3ptpct, 0.01, 0.59)) %>%
+  filter(NBA_g_played > 50) %>%
+  rename(Position=position)
+
+for (i in 1:(length(retired.players1$NBA_era))) {
+  if (retired.players1$active_from[i] <= 1969 && retired.players1$active_from[i]>=1960) {
+    retired.players1$NBA_era[i]="60s"
+  } else if (retired.players1$active_from[i] <= 1979 && retired.players1$active_from[i]>=1970) {
+     retired.players1$NBA_era[i]="70s"
+  } else if (retired.players1$active_from[i] <= 1989 && retired.players1$active_from[i]>=1980) {
+    retired.players1$NBA_era[i]="80s"
+  } else if (retired.players1$active_from[i] <= 1999 && retired.players1$active_from[i]>=1990) {
+    retired.players1$NBA_era[i]="90s"
+  } else if (retired.players1$active_from[i] <= 2009 && retired.players1$active_from[i]>=2000) {
+    retired.players1$NBA_era[i]="00s"
+  } else {
+    retired.players1$NBA_era[i]="10s"
+  }
+} 
+
+NCAAstat <- retired.players1[c(2,3,7,11:37)] 
+
+DATANCAATT = NCAAstat %>%
+  crossv_kfold(10) 
+
+train.model.func = function(NCAAstat){
+mod.NCAA.stat = lm(NBA__3ptpct ~ NCAA_ft + NCAA_ppg + NCAA__3ptapg + NCAA_fgpct + NCAA_fgpg + NCAA__3ptpct +  NCAA__3ptpg + NCAA_fgapg + NCAA_ftapg + NCAA_ftpg + NCAA_games, data = NCAAstat)
+
+step.mod = stepAIC(mod.NCAA.stat, direction = "both", trace=FALSE)
+return(step.mod)
+}
+
+
+DATANCAA1 = DATANCAATT %>%
+  mutate(ncaamodel1 = map(train, train.model.func))
+
+DATANCAA1.PREDICT = DATANCAA1 %>%
+    mutate(predict = map2(test, ncaamodel1, ~augment(.y,newdata=.x))) 
+
+DATANCAA2.PREDICT = DATANCAA1.PREDICT[,5] %>%
+    unnest(cols = c(predict)) 
+    
+
+OUT.RMSE = RMSE.func(actual = DATANCAA2.PREDICT$NBA__3ptpct, predict = DATANCAA2.PREDICT$.fitted )
+
+ggplot(DATANCAA2.PREDICT) +
+  geom_point(aes(x = NBA__3ptpct, y = .fitted, color=Position)) +
+  geom_abline(slope = 1, intercept = 0) +
+  xlab("Actual NBA 3pt %") +
+  ylab("Predicted NBA 3pt %") +
+  facet_wrap(vars(NBA_era))
+
+```
+
+
+### CONCLUSION
+
+In question 1 of our analysis, we found that although many models were used to try to predict the career length of various NBA players using NCAA statistics, none of the models could precisely or consistently predict the career length of a player. The inability to predict a NBA player’s career length is partially due to how the data for games played by NBA players is not normally distributed and is skewed right, as a vast majority of players in the NBA played less than 100 games. Additionally, the data is also skewed by outlier players who have extremely long career lengths. Thus, the model would both overpredict the players with shorter career lengths, and underpredict the players who would last longer in the league.
+
+In question 2 of our analysis, we sought to find what NCAA statistics or combination of NCAA statistics would be the best in predicting NBA 3-point percentage. After creating a variety of models, we found the combination of NCAA points per game, NCAA 3-pointers attempted per game, NCAA field goal percentages, NCAA field goals made per game, NCAA 3-point percentages, NCAA 3-pointers made per game, NCAA field goals attempted per game, NCAA free throws attempted per game, NCAA free throws made per game, and NCAA games played to be the best in predicting NBA 3-point percentage. We found that this model, when using cross-validation methods, produced a very low RMSE value, indicating that this combination of NCAA statistics would be a successful predictor of NBA 3-point shooting percentage. After our discoveries with the first relationship, our group did not expect to see a combination of variables that would make a prediction of this level of accuracy. There are a variety of factors that came into play making it difficult for a player's NBA career length to be predicted, but after finding that a player's 3-point percentage could be predicted, this information could be very useful. 
+
+In order to build a more comprehensive model that can predict career lengths with better accuracy, as well as the NBA 3-point percentages of NBA players, analysts would need to evaluate not only basketball players that played in the NCAA, but international and NBA G-League players as well. Recently, the NBA declared that high school players can avoid the NCAA altogether and move directly into the G-League for immediate professional basketball experience. In fact, in today’s NBA, NBA Draft prospects can be selected directly from the NBA’s G-League. Moreover, international players have revolutionized the modern NBA and many recent international stars such as Luka Doncic, Kristaps Porzingis, Giannis Antetokounmpo, and Nikola Jokic have dominated in the modern NBA scene. Our data solely pulls players who played in the NCAA and therefore loses some of its accuracy as a result of non-NCAA players playing such a key role in the NBA today. Furthermore, our model only takes into account performance statistics of NCAA players without considering many key physical attributes that play a major role in determining NBA career lengths and 3-point percentages. Attributes such as a player’s wingspan, vertical jump, three-quarter-sprint-time, bench press, standing reach, and hand length/width are critically evaluated by NBA teams in the process of analyzing a future NBA player’s potential. Our group would be interested in learning how significantly a model that takes these factors into account differs from the models we generated. 
+ 
+Finally, quantitative data has its limitations in being able to predict an athlete’s performance and career longevity. Player’s qualitative characteristics can be analyzed by the NBA prior to their draft picks, through in person evaluations and by NBA analysts reviewing these player’s past game films. An analyst may notice a player has immense potential, as long as some of their basketball playing techniques are adjusted. Therefore, this player could improve their game immensely from how they played in the NCAA, while in the NBA, but this would also depend upon the player’s coachability. Another qualitative characteristic that is difficult to control for in a model is how susceptible a player is to injuries. The combination of a player’s skill, potential and attitude are examples of variables  that lead to uncertainty when predicting a NBA player’s career based upon their NCAA statistics. Finally, the evolution of a player’s abilities and strength over time can cause further complications for models. In conclusion, while 3-point percentage is a variable that may be more easily predicted because of its significance in the game of basketball and it being an essential skill, career length relies on numerous human qualitative variables that may hinder the success of a quantitative model.
+
+
